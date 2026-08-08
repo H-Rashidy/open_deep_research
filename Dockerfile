@@ -2,23 +2,23 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install uv for fast dependency management
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-# 1. Copy ALL code first so Python can find the 'src/' folder during installation
+# 1. Copy ALL files first so Python can find the 'src' folder
 COPY . .
 
-# 2. Install project dependencies
+# 2. Install uv (the package manager)
+RUN pip install uv
+
+# 3. Install dependencies and create the virtual environment
 RUN uv sync --no-cache --no-dev
 
-# 3. Install the LangGraph CLI inside the virtual environment
+# 4. Install the LangGraph CLI inside the virtual environment
 RUN uv pip install "langgraph-cli[inmem]"
 
-# Activate the virtual environment by adding it to PATH
+# 5. Add virtual environment to PATH so the 'langgraph' command works
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Expose the port (Railway will use its own $PORT variable dynamically)
+# 6. Expose the port
 EXPOSE 8000
 
-# Start the server using langgraph dev, listening on the $PORT Railway provides
+# 7. Start the server (Railway dynamically assigns the $PORT variable)
 CMD langgraph dev --host 0.0.0.0 --port ${PORT:-8000}
