@@ -7,6 +7,14 @@ from typing import Any, List, Optional
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
+# --- OPENROUTER COMPATIBILITY FIX ---
+# OpenRouter is 100% OpenAI-compatible. We map the OpenRouter key to the 
+# OpenAI environment variables so LangChain's native client can talk to it.
+if "OPENROUTER_API_KEY" in os.environ:
+    os.environ["OPENAI_API_KEY"] = os.environ["OPENROUTER_API_KEY"]
+    os.environ["OPENAI_BASE_URL"] = "https://openrouter.ai/api/v1"
+# ------------------------------------
+
 
 class SearchAPI(Enum):
     """Enumeration of available search API providers."""
@@ -120,11 +128,11 @@ class Configuration(BaseModel):
     )
     # Model Configuration
     summarization_model: str = Field(
-        default="openrouter:deepseek/deepseek-v4-flash-latest",
+        default="openai:deepseek/deepseek-v4-flash-latest",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openrouter:deepseek/deepseek-v4-flash-latest",
+                "default": "openai:deepseek/deepseek-v4-flash-latest",
                 "description": "Model for summarizing research results from Tavily search results"
             }
         }
@@ -152,11 +160,11 @@ class Configuration(BaseModel):
         }
     )
     research_model: str = Field(
-        default="openrouter:z-ai/glm-5.2",
+        default="openai:z-ai/glm-5.2",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openrouter:z-ai/glm-5.2",
+                "default": "openai:z-ai/glm-5.2",
                 "description": "Model for conducting research. NOTE: Make sure your Researcher Model supports the selected search API."
             }
         }
@@ -172,11 +180,11 @@ class Configuration(BaseModel):
         }
     )
     compression_model: str = Field(
-        default="openrouter:qwen/qwen3.8-max",
+        default="openai:qwen/qwen3.8-max",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openrouter:qwen/qwen3.8-max",
+                "default": "openai:qwen/qwen3.8-max",
                 "description": "Model for compressing research findings from sub-agents."
             }
         }
@@ -192,11 +200,11 @@ class Configuration(BaseModel):
         }
     )
     final_report_model: str = Field(
-        default="openrouter:z-ai/glm-5.2",
+        default="openai:z-ai/glm-5.2",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openrouter:z-ai/glm-5.2",
+                "default": "openai:z-ai/glm-5.2",
                 "description": "Model for writing the final report from all research findings"
             }
         }
