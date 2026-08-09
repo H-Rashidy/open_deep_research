@@ -2,27 +2,23 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 1. Copy ALL code first so Python can find the 'src' folder during installation
+# 1. Copy ALL files first so Python can find the 'src' folder
 COPY . .
 
 # 2. Install uv (the package manager)
 RUN pip install uv
 
-# 3. Install project dependencies
+# 3. Install dependencies and create the virtual environment
 RUN uv sync --no-cache --no-dev
 
-# 4. Install the Production LangGraph API server and persistence drivers
-RUN uv pip install "langgraph-api" "langgraph-checkpoint-postgres" "langgraph-checkpoint-redis" "psycopg[binary]" "redis"
+# 4. Install the LangGraph CLI inside the virtual environment
+RUN uv pip install "langgraph-cli[inmem]"
 
-# Activate the virtual environment
+# 5. Add virtual environment to PATH so the 'langgraph' command works
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Expose the port
+# 6. Expose the port
 EXPOSE 8000
 
-# Tell the server where the graph is located
-ENV LANGSERVE_GRAPHS='{"Deep Researcher": "./src/open_deep_research/deep_researcher.py:deep_researcher"}'
-
-# Start the production server! 
-# (It will automatically detect DATABASE_URI and REDIS_URI and switch to persistent storage)
-CMD ["sh", "-c", "langgraph-api --host 0.0.0.0 --port ${PORT:-8000}"]
+# 7. Start the server (Railway dynamically assigns the $PORT variable)
+CMD langgraph dev --host 0.0.0.0 --port ${PORT:-8000}
