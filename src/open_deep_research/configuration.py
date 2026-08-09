@@ -119,21 +119,21 @@ class Configuration(BaseModel):
     )
     # Model Configuration
     summarization_model: str = Field(
-        default="openai:gpt-4.1-mini",
+        default="openrouter:deepseek/deepseek-v4-flash",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openai:gpt-4.1-mini",
+                "default": "openrouter:deepseek/deepseek-v4-flash",
                 "description": "Model for summarizing research results from Tavily search results"
             }
         }
     )
     summarization_model_max_tokens: int = Field(
-        default=8192,
+        default=16384, # Increased from 8192
         metadata={
             "x_oap_ui_config": {
                 "type": "number",
-                "default": 8192,
+                "default": 16384,
                 "description": "Maximum output tokens for summarization model"
             }
         }
@@ -151,61 +151,61 @@ class Configuration(BaseModel):
         }
     )
     research_model: str = Field(
-        default="openai:gpt-4.1",
+        default="openrouter:moonshotai/kimi-k3",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openai:gpt-4.1",
+                "default": "openrouter:moonshotai/kimi-k3",
                 "description": "Model for conducting research. NOTE: Make sure your Researcher Model supports the selected search API."
             }
         }
     )
     research_model_max_tokens: int = Field(
-        default=10000,
+        default=32768, # Increased from 10000 to allow deep analysis
         metadata={
             "x_oap_ui_config": {
                 "type": "number",
-                "default": 10000,
+                "default": 32768,
                 "description": "Maximum output tokens for research model"
             }
         }
     )
     compression_model: str = Field(
-        default="openai:gpt-4.1",
+        default="openrouter:qwen/qwen3.8-max",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openai:gpt-4.1",
-                "description": "Model for compressing research findings from sub-agents. NOTE: Make sure your Compression Model supports the selected search API."
+                "default": "openrouter:qwen/qwen3.8-max",
+                "description": "Model for compressing research findings from sub-agents."
             }
         }
     )
     compression_model_max_tokens: int = Field(
-        default=8192,
+        default=16384, # Increased from 8192
         metadata={
             "x_oap_ui_config": {
                 "type": "number",
-                "default": 8192,
+                "default": 16384,
                 "description": "Maximum output tokens for compression model"
             }
         }
     )
     final_report_model: str = Field(
-        default="openai:gpt-4.1",
+        default="openrouter:moonshotai/kimi-k3",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openai:gpt-4.1",
+                "default": "openrouter:moonshotai/kimi-k3",
                 "description": "Model for writing the final report from all research findings"
             }
         }
     )
     final_report_model_max_tokens: int = Field(
-        default=10000,
+        default=32768, # Increased from 10000 for comprehensive long-form reports
         metadata={
             "x_oap_ui_config": {
                 "type": "number",
-                "default": 10000,
+                "default": 32768,
                 "description": "Maximum output tokens for final report model"
             }
         }
