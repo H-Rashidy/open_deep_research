@@ -14,6 +14,7 @@ class SearchAPI(Enum):
     ANTHROPIC = "anthropic"
     OPENAI = "openai"
     TAVILY = "tavily"
+    OPENROUTER = "openrouter"
     NONE = "none"
 
 class MCPConfig(BaseModel):
@@ -119,11 +120,11 @@ class Configuration(BaseModel):
     )
     # Model Configuration
     summarization_model: str = Field(
-        default="openrouter:deepseek/deepseek-v4-flash-latest",
+        default="openrouter:deepseek/deepseek-v4-flash",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openrouter:deepseek/deepseek-v4-flash-latest",
+                "default": "openrouter:deepseek/deepseek-v4-flash",
                 "description": "Model for summarizing research results from Tavily search results"
             }
         }
