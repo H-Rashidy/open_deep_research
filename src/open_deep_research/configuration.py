@@ -120,11 +120,11 @@ class Configuration(BaseModel):
     )
     # Model Configuration
     summarization_model: str = Field(
-        default="openrouter:deepseek/deepseek-v4-flash",
+        default="openrouter:deepseek/deepseek-v4-flash-latest",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openrouter:deepseek/deepseek-v4-flash",
+                "default": "openrouter:deepseek/deepseek-v4-flash-latest",
                 "description": "Model for summarizing research results from Tavily search results"
             }
         }
@@ -152,11 +152,11 @@ class Configuration(BaseModel):
         }
     )
     research_model: str = Field(
-        default="openrouter:moonshotai/kimi-k3",
+        default="openrouter:z-ai/glm-5.2",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openrouter:moonshotai/kimi-k3",
+                "default": "openrouter:z-ai/glm-5.2",
                 "description": "Model for conducting research. NOTE: Make sure your Researcher Model supports the selected search API."
             }
         }
@@ -192,11 +192,11 @@ class Configuration(BaseModel):
         }
     )
     final_report_model: str = Field(
-        default="openrouter:moonshotai/kimi-k3",
+        default="openrouter:z-ai/glm-5.2",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openrouter:moonshotai/kimi-k3",
+                "default": "openrouter:z-ai/glm-5.2",
                 "description": "Model for writing the final report from all research findings"
             }
         }
