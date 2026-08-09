@@ -119,7 +119,7 @@ class Configuration(BaseModel):
     )
     # Model Configuration
     summarization_model: str = Field(
-        default="openrouter:deepseek/deepseek-v4-flash",
+        default="openrouter:deepseek/deepseek/deepseek-v4-flash-0731",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
