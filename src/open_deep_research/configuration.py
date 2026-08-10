@@ -180,7 +180,7 @@ class Configuration(BaseModel):
         }
     )
     compression_model: str = Field(
-        default="openai:qwen/qwen3.8-max",
+        default="openai:deepseek/deepseek-v4-flash-latest",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
