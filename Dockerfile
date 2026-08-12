@@ -1,24 +1,26 @@
-FROM python:3.11-slim
+FROM langchain/langgraph-api:3.11
 
-WORKDIR /app
 
-# 1. Copy ALL files first so Python can find the 'src' folder
-COPY . .
 
-# 2. Install uv (the package manager)
-RUN pip install uv
+# -- Adding local package . --
+ADD . /deps/open_deep_research
+# -- End of local package . --
 
-# 3. Install dependencies and create the virtual environment
-RUN uv sync --no-cache --no-dev
+# -- Installing all local dependencies --
+RUN for dep in /deps/*; do             echo "Installing $dep";             if [ -d "$dep" ]; then                 echo "Installing $dep";                 (cd "$dep" && PYTHONDONTWRITEBYTECODE=1 uv pip install --system --no-cache-dir -c /api/constraints.txt -e .);             fi;         done
+# -- End of local dependencies install --
+ENV LANGSERVE_GRAPHS='{"Deep Researcher": "/deps/open_deep_research/src/open_deep_research/deep_researcher.py:deep_researcher"}'
 
-# 4. Install the LangGraph CLI inside the virtual environment
-RUN uv pip install "langgraph-cli[inmem]"
 
-# 5. Add virtual environment to PATH so the 'langgraph' command works
-ENV PATH="/app/.venv/bin:$PATH"
 
-# 6. Expose the port
-EXPOSE 8000
+# -- Ensure user deps didn't inadvertently overwrite langgraph-api
+RUN mkdir -p /api/langgraph_api /api/langgraph_runtime /api/langgraph_license && touch /api/langgraph_api/__init__.py /api/langgraph_runtime/__init__.py /api/langgraph_license/__init__.py
+RUN PYTHONDONTWRITEBYTECODE=1 uv pip install --system --no-cache-dir --no-deps -e /api
+# -- End of ensuring user deps didn't inadvertently overwrite langgraph-api --
+# -- Removing build deps from the final image ~<:===~~~ --
+RUN pip uninstall -y pip setuptools wheel
+RUN rm -rf /usr/local/lib/python*/site-packages/pip* /usr/local/lib/python*/site-packages/setuptools* /usr/local/lib/python*/site-packages/wheel* && find /usr/local/bin -name "pip*" -delete || true
+RUN rm -rf /usr/lib/python*/site-packages/pip* /usr/lib/python*/site-packages/setuptools* /usr/lib/python*/site-packages/wheel* && find /usr/bin -name "pip*" -delete || true
+RUN uv pip uninstall --system pip setuptools wheel && rm /usr/bin/uv /usr/bin/uvx
 
-# 7. Start the server (Railway dynamically assigns the $PORT variable)
-CMD langgraph dev --host 0.0.0.0 --port ${PORT:-8000}
+WORKDIR /deps/open_deep_research
