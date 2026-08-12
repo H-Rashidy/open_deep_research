@@ -160,11 +160,11 @@ class Configuration(BaseModel):
         }
     )
     research_model: str = Field(
-        default="openai:z-ai/glm-5.2",
+        default="openai:deepseek/deepseek-v4-flash-latest",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openai:z-ai/glm-5.2",
+                "default": "openai:deepseek/deepseek-v4-flash-latest",
                 "description": "Model for conducting research. NOTE: Make sure your Researcher Model supports the selected search API."
             }
         }
