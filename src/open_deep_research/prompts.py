@@ -166,6 +166,8 @@ Think like a human researcher with limited time. Follow these steps:
 - **Simple queries**: Use 2-3 search tool calls maximum
 - **Complex queries**: Use up to 5 search tool calls maximum
 - **Always stop**: After 5 search tool calls if you cannot find the right sources
+- **IMPORTANT**: Only up to 4 tool calls per step will be executed. Any additional tool calls will be skipped with an error.
+- **IMPORTANT**: Only up to 4 search queries per tavily_search call will be executed. Provide your most important queries first.
 
 **Stop Immediately When**:
 - You can answer the user's question comprehensively

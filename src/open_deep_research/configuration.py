@@ -49,11 +49,11 @@ class Configuration(BaseModel):
     
     # General Configuration
     max_structured_output_retries: int = Field(
-        default=3,
+        default=2,
         metadata={
             "x_oap_ui_config": {
                 "type": "number",
-                "default": 3,
+                "default": 2,
                 "min": 1,
                 "max": 10,
                 "description": "Maximum number of retries for structured output calls from models"
@@ -71,15 +71,104 @@ class Configuration(BaseModel):
         }
     )
     max_concurrent_research_units: int = Field(
-        default=5,
+        default=2,
         metadata={
             "x_oap_ui_config": {
                 "type": "slider",
-                "default": 5,
+                "default": 2,
+                "min": 1,
+                "max": 10,
+                "step": 1,
+                "description": "Maximum number of research units to run concurrently. This will allow the researcher to use multiple sub-agents to conduct research. Note: with more concurrency, you may run into rate limits."
+            }
+        }
+    )
+    max_tool_calls_per_step: int = Field(
+        default=4,
+        metadata={
+            "x_oap_ui_config": {
+                "type": "slider",
+                "default": 4,
+                "min": 1,
+                "max": 15,
+                "step": 1,
+                "description": "Maximum number of parallel tool calls in a single researcher step. Overflow calls receive an error tool message."
+            }
+        }
+    )
+    max_parallel_tool_calls: int = Field(
+        default=4,
+        metadata={
+            "x_oap_ui_config": {
+                "type": "slider",
+                "default": 4,
+                "min": 1,
+                "max": 15,
+                "step": 1,
+                "description": "Maximum number of tools to execute concurrently (via semaphore). Reduces API saturation."
+            }
+        }
+    )
+    max_queries_per_search_call: int = Field(
+        default=4,
+        metadata={
+            "x_oap_ui_config": {
+                "type": "slider",
+                "default": 4,
+                "min": 1,
+                "max": 10,
+                "step": 1,
+                "description": "Maximum number of search queries per Tavily search call. Additional queries are truncated."
+            }
+        }
+    )
+    max_results_per_query: int = Field(
+        default=3,
+        metadata={
+            "x_oap_ui_config": {
+                "type": "slider",
+                "default": 3,
+                "min": 1,
+                "max": 10,
+                "step": 1,
+                "description": "Maximum number of results to return per search query."
+            }
+        }
+    )
+    max_summarization_concurrency: int = Field(
+        default=4,
+        metadata={
+            "x_oap_ui_config": {
+                "type": "slider",
+                "default": 4,
                 "min": 1,
                 "max": 20,
                 "step": 1,
-                "description": "Maximum number of research units to run concurrently. This will allow the researcher to use multiple sub-agents to conduct research. Note: with more concurrency, you may run into rate limits."
+                "description": "Maximum number of concurrent webpage summarization tasks. Reduces API saturation and cost."
+            }
+        }
+    )
+    summarization_timeout_seconds: int = Field(
+        default=45,
+        metadata={
+            "x_oap_ui_config": {
+                "type": "number",
+                "default": 45,
+                "min": 10,
+                "max": 300,
+                "description": "Timeout in seconds for webpage summarization calls. On timeout, truncated content is returned instead of raw content."
+            }
+        }
+    )
+    summarization_fallback_max_chars: int = Field(
+        default=4000,
+        metadata={
+            "x_oap_ui_config": {
+                "type": "number",
+                "default": 4000,
+                "min": 500,
+                "max": 50000,
+                "description": "Maximum characters to return from summarization on timeout/failure, instead of raw full content. Prevents context bloat."
             }
         }
     )
@@ -101,11 +190,11 @@ class Configuration(BaseModel):
         }
     )
     max_researcher_iterations: int = Field(
-        default=6,
+        default=4,
         metadata={
             "x_oap_ui_config": {
                 "type": "slider",
-                "default": 6,
+                "default": 4,
                 "min": 1,
                 "max": 10,
                 "step": 1,
@@ -114,11 +203,11 @@ class Configuration(BaseModel):
         }
     )
     max_react_tool_calls: int = Field(
-        default=10,
+        default=6,
         metadata={
             "x_oap_ui_config": {
                 "type": "slider",
-                "default": 10,
+                "default": 6,
                 "min": 1,
                 "max": 30,
                 "step": 1,

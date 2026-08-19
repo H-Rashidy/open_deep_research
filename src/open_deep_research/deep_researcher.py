@@ -1,6 +1,7 @@
 """Main LangGraph implementation for the Deep Research agent."""
 
 import asyncio
+import logging
 from typing import Literal
 
 from langchain.chat_models import init_chat_model
@@ -330,16 +331,17 @@ async def supervisor_tools(state: SupervisorState, config: RunnableConfig) -> Co
                 update_payload["raw_notes"] = [raw_notes_concat]
                 
         except Exception as e:
-            # Handle research execution errors
-            if is_token_limit_exceeded(e, configurable.research_model) or True:
-                # Token limit exceeded or other error - end research phase
-                return Command(
-                    goto=END,
-                    update={
-                        "notes": get_notes_from_tool_calls(supervisor_messages),
-                        "research_brief": state.get("research_brief", "")
-                    }
-                )
+            # Handle research execution errors gracefully
+            # If token limit exceeded, end research phase with partial results
+            # Otherwise, log the error and continue with what we have
+            logging.error(f"Research execution error: {e}")
+            return Command(
+                goto=END,
+                update={
+                    "notes": get_notes_from_tool_calls(supervisor_messages),
+                    "research_brief": state.get("research_brief", "")
+                }
+            )
     
     # Step 3: Return command with all tool results
     update_payload["supervisor_messages"] = all_tool_messages
@@ -470,11 +472,27 @@ async def researcher_tools(state: ResearcherState, config: RunnableConfig) -> Co
         for tool in tools
     }
     
-    # Execute all tool calls in parallel
+    # Cap the number of parallel tool calls to prevent unbounded fan-out
+    # This is the same truncation pattern used by supervisor_tools
     tool_calls = most_recent_message.tool_calls
+    max_tool_calls = configurable.max_tool_calls_per_step
+    allowed_tool_calls = tool_calls[:max_tool_calls]
+    overflow_tool_calls = tool_calls[max_tool_calls:]
+    
+    # Use semaphore to limit concurrent tool execution
+    tool_semaphore = asyncio.Semaphore(configurable.max_parallel_tool_calls)
+    
+    async def execute_with_semaphore(tool_call):
+        async with tool_semaphore:
+            tool = tools_by_name.get(tool_call["name"])
+            if tool is None:
+                return f"Error: Tool '{tool_call['name']}' not found"
+            return await execute_tool_safely(tool, tool_call["args"], config)
+    
+    # Execute allowed tool calls in parallel (bounded by semaphore)
     tool_execution_tasks = [
-        execute_tool_safely(tools_by_name[tool_call["name"]], tool_call["args"], config) 
-        for tool_call in tool_calls
+        execute_with_semaphore(tool_call) 
+        for tool_call in allowed_tool_calls
     ]
     observations = await asyncio.gather(*tool_execution_tasks)
     
@@ -485,8 +503,16 @@ async def researcher_tools(state: ResearcherState, config: RunnableConfig) -> Co
             name=tool_call["name"],
             tool_call_id=tool_call["id"]
         ) 
-        for observation, tool_call in zip(observations, tool_calls)
+        for observation, tool_call in zip(observations, allowed_tool_calls)
     ]
+    
+    # Handle overflow tool calls with error messages
+    for overflow_call in overflow_tool_calls:
+        tool_outputs.append(ToolMessage(
+            content=f"Error: Did not run this tool as you have exceeded the maximum number of tool calls per step ({max_tool_calls}). Please reduce the number of parallel tool calls in your next step.",
+            name=overflow_call["name"],
+            tool_call_id=overflow_call["id"]
+        ))
     
     # Step 3: Check late exit conditions (after processing tools)
     exceeded_iterations = state.get("tool_call_iterations", 0) >= configurable.max_react_tool_calls

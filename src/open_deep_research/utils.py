@@ -43,7 +43,7 @@ TAVILY_SEARCH_DESCRIPTION = (
 @tool(description=TAVILY_SEARCH_DESCRIPTION)
 async def tavily_search(
     queries: List[str],
-    max_results: Annotated[int, InjectedToolArg] = 5,
+    max_results: Annotated[int, InjectedToolArg] = 3,
     topic: Annotated[Literal["general", "news", "finance"], InjectedToolArg] = "general",
     config: RunnableConfig = None
 ) -> str:
@@ -58,6 +58,12 @@ async def tavily_search(
     Returns:
         Formatted string containing summarized search results
     """
+    # Step 0: Load config and cap queries to prevent unbounded fan-out
+    configurable = Configuration.from_runnable_config(config)
+    max_queries = configurable.max_queries_per_search_call
+    if len(queries) > max_queries:
+        queries = queries[:max_queries]
+    
     # Step 1: Execute search queries asynchronously
     search_results = await tavily_search_async(
         queries,
@@ -76,8 +82,6 @@ async def tavily_search(
                 unique_results[url] = {**result, "query": response['query']}
     
     # Step 3: Set up the summarization model with configuration
-    configurable = Configuration.from_runnable_config(config)
-    
     # Character limit to stay within model token limits (configurable)
     max_char_to_include = configurable.max_content_length
     
@@ -87,7 +91,8 @@ async def tavily_search(
         model=configurable.summarization_model,
         max_tokens=configurable.summarization_model_max_tokens,
         api_key=model_api_key,
-        tags=["langsmith:nostream"]
+        tags=["langsmith:nostream"],
+        timeout=configurable.summarization_timeout_seconds + 15,
     ).with_structured_output(Summary).with_retry(
         stop_after_attempt=configurable.max_structured_output_retries
     )
@@ -97,16 +102,31 @@ async def tavily_search(
         """No-op function for results without raw content."""
         return None
     
+    # Cap the total number of URLs to summarize to prevent excessive cost
+    capped_results = list(unique_results.values())[:configurable.max_summarization_concurrency * 5]
+    
+    # Use semaphore to limit concurrent summarization calls
+    summarization_semaphore = asyncio.Semaphore(configurable.max_summarization_concurrency)
+    
+    async def summarize_with_semaphore(model, content):
+        async with summarization_semaphore:
+            return await summarize_webpage(
+                model, 
+                content,
+                timeout=configurable.summarization_timeout_seconds,
+                fallback_max_chars=configurable.summarization_fallback_max_chars,
+            )
+    
     summarization_tasks = [
         noop() if not result.get("raw_content") 
-        else summarize_webpage(
+        else summarize_with_semaphore(
             summarization_model, 
             result['raw_content'][:max_char_to_include]
         )
-        for result in unique_results.values()
+        for result in capped_results
     ]
     
-    # Step 5: Execute all summarization tasks in parallel
+    # Step 5: Execute all summarization tasks in parallel (bounded by semaphore)
     summaries = await asyncio.gather(*summarization_tasks)
     
     # Step 6: Combine results with their summaries
@@ -172,15 +192,17 @@ async def tavily_search_async(
     search_results = await asyncio.gather(*search_tasks)
     return search_results
 
-async def summarize_webpage(model: BaseChatModel, webpage_content: str) -> str:
+async def summarize_webpage(model: BaseChatModel, webpage_content: str, timeout: float = 45.0, fallback_max_chars: int = 4000) -> str:
     """Summarize webpage content using AI model with timeout protection.
     
     Args:
         model: The chat model configured for summarization
         webpage_content: Raw webpage content to be summarized
+        timeout: Timeout in seconds for the summarization call
+        fallback_max_chars: Max characters to return if summarization fails (prevents context bloat)
         
     Returns:
-        Formatted summary with key excerpts, or original content if summarization fails
+        Formatted summary with key excerpts, or truncated content if summarization fails
     """
     try:
         # Create prompt with current date context
@@ -192,7 +214,7 @@ async def summarize_webpage(model: BaseChatModel, webpage_content: str) -> str:
         # Execute summarization with timeout to prevent hanging
         summary = await asyncio.wait_for(
             model.ainvoke([HumanMessage(content=prompt_content)]),
-            timeout=60.0  # 60 second timeout for summarization
+            timeout=timeout
         )
         
         # Format the summary with structured sections
@@ -204,13 +226,16 @@ async def summarize_webpage(model: BaseChatModel, webpage_content: str) -> str:
         return formatted_summary
         
     except asyncio.TimeoutError:
-        # Timeout during summarization - return original content
-        logging.warning("Summarization timed out after 60 seconds, returning original content")
-        return webpage_content
+        # Timeout during summarization - return truncated content instead of full raw
+        # This prevents the context-bloat death spiral seen in production
+        truncated = webpage_content[:fallback_max_chars] if len(webpage_content) > fallback_max_chars else webpage_content
+        logging.warning(f"Summarization timed out after {timeout}s, returning {len(truncated)} chars (truncated from {len(webpage_content)})")
+        return truncated
     except Exception as e:
-        # Other errors during summarization - log and return original content
-        logging.warning(f"Summarization failed with error: {str(e)}, returning original content")
-        return webpage_content
+        # Other errors during summarization - return truncated content
+        truncated = webpage_content[:fallback_max_chars] if len(webpage_content) > fallback_max_chars else webpage_content
+        logging.warning(f"Summarization failed with error: {str(e)}, returning {len(truncated)} chars (truncated from {len(webpage_content)})")
+        return truncated
 
 ##########################
 # Reflection Tool Utils
