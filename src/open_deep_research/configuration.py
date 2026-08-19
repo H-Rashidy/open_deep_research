@@ -128,11 +128,11 @@ class Configuration(BaseModel):
     )
     # Model Configuration
     summarization_model: str = Field(
-        default="openai:deepseek/deepseek-v4-flash-latest",
+        default="openai:deepseek/deepseek-v4-flash-0731",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openai:deepseek/deepseek-v4-flash-latest",
+                "default": "openai:deepseek/deepseek-v4-flash-0731",
                 "description": "Model for summarizing research results from Tavily search results"
             }
         }
@@ -160,11 +160,11 @@ class Configuration(BaseModel):
         }
     )
     research_model: str = Field(
-        default="openai:deepseek/deepseek-v4-flash-latest",
+        default="openai:deepseek/deepseek-v4-flash-0731",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openai:deepseek/deepseek-v4-flash-latest",
+                "default": "openai:deepseek/deepseek-v4-flash-0731",
                 "description": "Model for conducting research. NOTE: Make sure your Researcher Model supports the selected search API."
             }
         }
@@ -180,11 +180,11 @@ class Configuration(BaseModel):
         }
     )
     compression_model: str = Field(
-        default="openai:deepseek/deepseek-v4-flash-latest",
+        default="openai:deepseek/deepseek-v4-flash-0731",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "openai:qwen/qwen3.8-max",
+                "default": "openai:deepseek/deepseek-v4-flash-0731",
                 "description": "Model for compressing research findings from sub-agents."
             }
         }
