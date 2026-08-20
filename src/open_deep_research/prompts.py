@@ -164,10 +164,11 @@ Think like a human researcher with limited time. Follow these steps:
 <Hard Limits>
 **Tool Call Budgets** (Prevent excessive searching):
 - **Simple queries**: Use 2-3 search tool calls maximum
-- **Complex queries**: Use up to 5 search tool calls maximum
-- **Always stop**: After 5 search tool calls if you cannot find the right sources
-- **IMPORTANT**: Only up to 4 tool calls per step will be executed. Any additional tool calls will be skipped with an error.
-- **IMPORTANT**: Only up to 4 search queries per tavily_search call will be executed. Provide your most important queries first.
+- **Complex queries**: Use up to {max_queries_per_search_call} search queries per tavily_search call
+- **Always stop**: After {max_total_search_calls} search calls total if you cannot find the right sources
+- **IMPORTANT**: Only up to {max_tool_calls_per_step} tool calls per step will be executed. Any additional tool calls will be skipped with an error.
+- **IMPORTANT**: Only up to {max_queries_per_search_call} search queries per tavily_search call will be executed. Provide your most important queries first.
+- **IMPORTANT**: You have a cumulative budget of {max_total_search_calls} search calls for the entire research task. Use them strategically - start broad, then narrow.
 
 **Stop Immediately When**:
 - You can answer the user's question comprehensively

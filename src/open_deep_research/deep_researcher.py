@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from typing import Literal
 
 from langchain.chat_models import init_chat_model
@@ -15,7 +16,7 @@ from langchain_core.messages import (
 )
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Command
+from langgraph.types import Command, interrupt
 
 from open_deep_research.configuration import (
     Configuration,
@@ -73,9 +74,17 @@ async def clarify_with_user(state: AgentState, config: RunnableConfig) -> Comman
     """
     # Step 1: Check if clarification is enabled in configuration
     configurable = Configuration.from_runnable_config(config)
+    
+    # Record the wall-clock start time of the entire run (keep_earliest reducer
+    # ensures this is only ever set once). This powers max_run_duration_seconds.
+    run_started_at = state.get("run_started_at") or time.time()
+    
     if not configurable.allow_clarification:
         # Skip clarification step and proceed directly to research
-        return Command(goto="write_research_brief")
+        return Command(
+            goto="write_research_brief",
+            update={"run_started_at": run_started_at}
+        )
     
     # Step 2: Prepare the model for structured clarification analysis
     messages = state["messages"]
@@ -103,10 +112,24 @@ async def clarify_with_user(state: AgentState, config: RunnableConfig) -> Comman
     
     # Step 4: Route based on clarification analysis
     if response.need_clarification:
-        # End with clarifying question for user
+        # Pause the graph and surface a proper input field to the user.
+        # `interrupt()` returns the user's response when the graph is resumed,
+        # enabling a native LangGraph human-in-the-loop UX instead of just
+        # appending an AI message and ending.
+        user_response = interrupt({
+            "question": response.question,
+            "type": "clarification_needed"
+        })
+        
+        # Resume research with the user's clarification included in history
         return Command(
-            goto=END, 
-            update={"messages": [AIMessage(content=response.question)]}
+            goto="write_research_brief", 
+            update={
+                "messages": [
+                    AIMessage(content=response.question),
+                    HumanMessage(content=user_response)
+                ]
+            }
         )
     else:
         # Proceed to research with verification message
@@ -165,6 +188,7 @@ async def write_research_brief(state: AgentState, config: RunnableConfig) -> Com
         goto="research_supervisor", 
         update={
             "research_brief": response.research_brief,
+            "run_started_at": state.get("run_started_at") or time.time(),
             "supervisor_messages": {
                 "type": "override",
                 "value": [
@@ -252,8 +276,21 @@ async def supervisor_tools(state: SupervisorState, config: RunnableConfig) -> Co
         for tool_call in most_recent_message.tool_calls
     )
     
+    # Enforce the maximum total run duration (max_run_duration_seconds).
+    # This is a wall-clock safety net that prevents infinite/hanging runs.
+    run_started_at = state.get("run_started_at")
+    exceeded_run_duration = False
+    if run_started_at is not None:
+        elapsed = time.time() - run_started_at
+        exceeded_run_duration = elapsed >= configurable.max_run_duration_seconds
+    
     # Exit if any termination condition is met
-    if exceeded_allowed_iterations or no_tool_calls or research_complete_tool_call:
+    if (
+        exceeded_allowed_iterations or 
+        no_tool_calls or 
+        research_complete_tool_call or 
+        exceeded_run_duration
+    ):
         return Command(
             goto=END,
             update={
@@ -292,7 +329,9 @@ async def supervisor_tools(state: SupervisorState, config: RunnableConfig) -> Co
             allowed_conduct_research_calls = conduct_research_calls[:configurable.max_concurrent_research_units]
             overflow_conduct_research_calls = conduct_research_calls[configurable.max_concurrent_research_units:]
             
-            # Execute research tasks in parallel
+            # Execute research tasks in parallel, bounded by the researcher timeout.
+            # research_timeout_seconds prevents a single researcher from hanging
+            # the entire run (e.g. on a slow or unresponsive tool/API call).
             research_tasks = [
                 researcher_subgraph.ainvoke({
                     "researcher_messages": [
@@ -303,7 +342,10 @@ async def supervisor_tools(state: SupervisorState, config: RunnableConfig) -> Co
                 for tool_call in allowed_conduct_research_calls
             ]
             
-            tool_results = await asyncio.gather(*research_tasks)
+            tool_results = await asyncio.wait_for(
+                asyncio.gather(*research_tasks),
+                timeout=configurable.research_timeout_seconds
+            )
             
             # Create tool messages with research results
             for observation, tool_call in zip(tool_results, allowed_conduct_research_calls):
@@ -398,10 +440,13 @@ async def researcher(state: ResearcherState, config: RunnableConfig) -> Command[
         "tags": ["langsmith:nostream"]
     }
     
-    # Prepare system prompt with MCP context if available
+    # Prepare system prompt with MCP context and research budgets
     researcher_prompt = research_system_prompt.format(
         mcp_prompt=configurable.mcp_prompt or "", 
-        date=get_today_str()
+        date=get_today_str(),
+        max_queries_per_search_call=configurable.max_queries_per_search_call,
+        max_total_search_calls=configurable.max_total_search_calls,
+        max_tool_calls_per_step=configurable.max_tool_calls_per_step
     )
     
     # Configure model with tools, retry logic, and settings
@@ -479,6 +524,32 @@ async def researcher_tools(state: ResearcherState, config: RunnableConfig) -> Co
     allowed_tool_calls = tool_calls[:max_tool_calls]
     overflow_tool_calls = tool_calls[max_tool_calls:]
     
+    # Enforce the cumulative search budget (max_total_search_calls).
+    # Individual searches are the main cost driver (each search fan-outs into
+    # Tavily requests + webpage summarizations), so we cap the number of search
+    # tool calls across ALL researcher steps, not just per step.
+    search_tool_names = {"tavily_search", "web_search"}
+    search_calls_used = state.get("search_calls_used", 0)
+    search_calls_in_step = [
+        tool_call for tool_call in allowed_tool_calls
+        if tool_call["name"] in search_tool_names
+    ]
+    remaining_search_budget = max(0, configurable.max_total_search_calls - search_calls_used)
+    
+    # If this step would exceed the cumulative search budget, block the excess
+    # search calls and return informative error messages to the model.
+    search_budget_exceeded_calls = []
+    if len(search_calls_in_step) > remaining_search_budget:
+        # Keep the allowed number of searches, move the rest into the overflow bucket
+        allowed_search_calls = search_calls_in_step[:remaining_search_budget] if remaining_search_budget > 0 else []
+        blocked_search_calls = search_calls_in_step[remaining_search_budget:] if remaining_search_budget > 0 else search_calls_in_step
+        non_search_calls = [
+            tool_call for tool_call in allowed_tool_calls
+            if tool_call["name"] not in search_tool_names
+        ]
+        allowed_tool_calls = non_search_calls + allowed_search_calls
+        search_budget_exceeded_calls = blocked_search_calls
+    
     # Use semaphore to limit concurrent tool execution
     tool_semaphore = asyncio.Semaphore(configurable.max_parallel_tool_calls)
     
@@ -506,6 +577,21 @@ async def researcher_tools(state: ResearcherState, config: RunnableConfig) -> Co
         for observation, tool_call in zip(observations, allowed_tool_calls)
     ]
     
+    # Track how many searches were actually executed this step
+    executed_search_count = sum(
+        1 for tool_call in allowed_tool_calls
+        if tool_call["name"] in search_tool_names
+    )
+    updated_search_calls_used = search_calls_used + executed_search_count
+    
+    # Handle search budget exceeded calls with error messages
+    for budgeted_call in search_budget_exceeded_calls:
+        tool_outputs.append(ToolMessage(
+            content=f"Error: Did not run this search as you have exceeded the maximum total number of searches ({configurable.max_total_search_calls}). You have used {updated_search_calls_used} of {configurable.max_total_search_calls} search calls. Please synthesize your findings or use think_tool to assess whether you have enough information to complete the research.",
+            name=budgeted_call["name"],
+            tool_call_id=budgeted_call["id"]
+        ))
+    
     # Handle overflow tool calls with error messages
     for overflow_call in overflow_tool_calls:
         tool_outputs.append(ToolMessage(
@@ -514,6 +600,13 @@ async def researcher_tools(state: ResearcherState, config: RunnableConfig) -> Co
             tool_call_id=overflow_call["id"]
         ))
     
+    # If the cumulative search budget is exhausted entirely, end research early
+    # so we don't burn a researcher iteration on a model that can only use blocked
+    # search calls.
+    search_budget_exhausted = updated_search_calls_used >= configurable.max_total_search_calls
+    all_searches_blocked = len(search_calls_in_step) > 0 and len(search_budget_exceeded_calls) >= len(search_calls_in_step)
+    force_compress = search_budget_exhausted and all_searches_blocked
+    
     # Step 3: Check late exit conditions (after processing tools)
     exceeded_iterations = state.get("tool_call_iterations", 0) >= configurable.max_react_tool_calls
     research_complete_called = any(
@@ -521,17 +614,23 @@ async def researcher_tools(state: ResearcherState, config: RunnableConfig) -> Co
         for tool_call in most_recent_message.tool_calls
     )
     
-    if exceeded_iterations or research_complete_called:
+    if exceeded_iterations or research_complete_called or force_compress:
         # End research and proceed to compression
         return Command(
             goto="compress_research",
-            update={"researcher_messages": tool_outputs}
+            update={
+                "researcher_messages": tool_outputs,
+                "search_calls_used": updated_search_calls_used
+            }
         )
     
     # Continue research loop with tool results
     return Command(
         goto="researcher",
-        update={"researcher_messages": tool_outputs}
+        update={
+            "researcher_messages": tool_outputs,
+            "search_calls_used": updated_search_calls_used
+        }
     )
 
 async def compress_research(state: ResearcherState, config: RunnableConfig):

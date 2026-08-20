@@ -58,6 +58,12 @@ def override_reducer(current_value, new_value):
         return new_value.get("value", new_value)
     else:
         return operator.add(current_value, new_value)
+
+def keep_earliest(current_value, new_value):
+    """Reducer that keeps the earliest (first) value written to state."""
+    if current_value is None:
+        return new_value
+    return current_value
     
 class AgentInputState(MessagesState):
     """InputState is only 'messages'."""
@@ -70,6 +76,7 @@ class AgentState(MessagesState):
     raw_notes: Annotated[list[str], override_reducer] = []
     notes: Annotated[list[str], override_reducer] = []
     final_report: str
+    run_started_at: Annotated[Optional[float], keep_earliest] = None
 
 class SupervisorState(TypedDict):
     """State for the supervisor that manages research tasks."""
@@ -79,12 +86,14 @@ class SupervisorState(TypedDict):
     notes: Annotated[list[str], override_reducer] = []
     research_iterations: int = 0
     raw_notes: Annotated[list[str], override_reducer] = []
+    run_started_at: Annotated[Optional[float], keep_earliest] = None
 
 class ResearcherState(TypedDict):
     """State for individual researchers conducting research."""
     
     researcher_messages: Annotated[list[MessageLikeRepresentation], operator.add]
     tool_call_iterations: int = 0
+    search_calls_used: int = 0
     research_topic: str
     compressed_research: str
     raw_notes: Annotated[list[str], override_reducer] = []

@@ -110,15 +110,28 @@ class Configuration(BaseModel):
         }
     )
     max_queries_per_search_call: int = Field(
-        default=4,
+        default=2,
         metadata={
             "x_oap_ui_config": {
                 "type": "slider",
-                "default": 4,
+                "default": 2,
                 "min": 1,
                 "max": 10,
                 "step": 1,
-                "description": "Maximum number of search queries per Tavily search call. Additional queries are truncated."
+                "description": "Maximum number of search queries per Tavily search call. Additional queries are truncated. Reduced to limit per-call API fan-out."
+            }
+        }
+    )
+    max_total_search_calls: int = Field(
+        default=10,
+        metadata={
+            "x_oap_ui_config": {
+                "type": "slider",
+                "default": 10,
+                "min": 1,
+                "max": 30,
+                "step": 1,
+                "description": "Maximum total number of search tool calls per researcher, across ALL steps. Safety net against runaway searching."
             }
         }
     )
@@ -212,6 +225,30 @@ class Configuration(BaseModel):
                 "max": 30,
                 "step": 1,
                 "description": "Maximum number of tool calling iterations to make in a single researcher step."
+            }
+        }
+    )
+    research_timeout_seconds: int = Field(
+        default=120,
+        metadata={
+            "x_oap_ui_config": {
+                "type": "number",
+                "default": 120,
+                "min": 30,
+                "max": 3600,
+                "description": "Timeout in seconds for an individual researcher's research execution. Prevents hanging research steps."
+            }
+        }
+    )
+    max_run_duration_seconds: int = Field(
+        default=600,
+        metadata={
+            "x_oap_ui_config": {
+                "type": "number",
+                "default": 600,
+                "min": 60,
+                "max": 7200,
+                "description": "Maximum total duration in seconds for the entire deep research run. Prevents infinite runs."
             }
         }
     )
